@@ -20,6 +20,7 @@ import (
 )
 
 func main() {
+	// This example can run as a server or a client against gRPC + etcd.
 	mode := flag.String("mode", "server", "server or client")
 	addr := flag.String("addr", "127.0.0.1:9000", "grpc listen address for server")
 	target := flag.String("target", "127.0.0.1:9000", "grpc target for client")
@@ -49,6 +50,7 @@ func main() {
 }
 
 func runServer(addr, endpoints, service, groupName string) error {
+	// Server registers itself in etcd and serves GroupCache over gRPC.
 	cli, err := newEtcdClient(endpoints)
 	if err != nil {
 		return err
@@ -80,6 +82,7 @@ func runServer(addr, endpoints, service, groupName string) error {
 }
 
 func runClient(target, group, op, key, value string) error {
+	// Client issues a single get/set/delete request against a target node.
 	conn, err := grpc.Dial(target, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return err
@@ -116,6 +119,7 @@ func runClient(target, group, op, key, value string) error {
 }
 
 func newEtcdClient(endpoints string) (*clientv3.Client, error) {
+	// newEtcdClient parses the endpoint list and connects to etcd.
 	parts := strings.Split(endpoints, ",")
 	cfg := clientv3.Config{
 		Endpoints:   parts,
@@ -125,6 +129,7 @@ func newEtcdClient(endpoints string) (*clientv3.Client, error) {
 }
 
 func signalContext() (context.Context, func()) {
+	// signalContext cancels on SIGINT/SIGTERM for graceful shutdown.
 	ctx, cancel := context.WithCancel(context.Background())
 	ch := make(chan os.Signal, 1)
 	signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM)

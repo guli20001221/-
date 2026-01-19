@@ -18,6 +18,7 @@ func WatchEtcd(ctx context.Context, client *clientv3.Client, service string, pic
 	}
 	prefix := etcdreg.ServicePrefix(service)
 
+	// update rebuilds the peer list from etcd keys.
 	update := func(kvs []*mvccpb.KeyValue) {
 		addrs := make([]string, 0, len(kvs))
 		for _, kv := range kvs {
@@ -37,6 +38,7 @@ func WatchEtcd(ctx context.Context, client *clientv3.Client, service string, pic
 	}
 	update(resp.Kvs)
 
+	// Watch for changes and refresh the peer set.
 	watchCh := client.Watch(ctx, prefix, clientv3.WithPrefix())
 	go func() {
 		for {

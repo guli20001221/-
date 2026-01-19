@@ -16,6 +16,7 @@ import (
 )
 
 func main() {
+	// Simple load/verify driver for GroupCache gRPC endpoints.
 	targets := flag.String("targets", "127.0.0.1:9000", "comma separated grpc targets")
 	group := flag.String("group", "scores", "cache group name")
 	concurrency := flag.Int("c", 20, "concurrency")
@@ -50,6 +51,7 @@ func main() {
 }
 
 func runVerify(clients []pb.GroupCacheClient, group string, timeout time.Duration) error {
+	// Basic set/get/delete sanity check against the first target.
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
@@ -73,6 +75,7 @@ func runVerify(clients []pb.GroupCacheClient, group string, timeout time.Duratio
 }
 
 func runLoad(clients []pb.GroupCacheClient, group string, total, concurrency int, timeout time.Duration) {
+	// Concurrent mixed workload with a read-heavy ratio.
 	var okCount int64
 	var errCount int64
 	start := time.Now()
@@ -125,6 +128,7 @@ func runLoad(clients []pb.GroupCacheClient, group string, total, concurrency int
 }
 
 func newClients(addrs []string) ([]pb.GroupCacheClient, error) {
+	// Dial all targets and build gRPC clients.
 	clients := make([]pb.GroupCacheClient, 0, len(addrs))
 	for _, addr := range addrs {
 		conn, err := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
@@ -145,6 +149,7 @@ func closeClients(clients []pb.GroupCacheClient) {
 }
 
 func splitList(s string) []string {
+	// splitList trims and filters a comma-separated list.
 	parts := strings.Split(s, ",")
 	out := make([]string, 0, len(parts))
 	for _, p := range parts {

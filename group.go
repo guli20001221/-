@@ -16,80 +16,82 @@ var (
 	groups   = make(map[string]*Group)
 )
 
-// ErrKeyRequired 键不能为空错误
+// ErrKeyRequired
 var ErrKeyRequired = errors.New("key is required")
 
-// ErrValueRequired 值不能为空错误
+// ErrValueRequired
 var ErrValueRequired = errors.New("value is required")
 
-// ErrGroupClosed 组已关闭错误
+// ErrGroupClosed
 var ErrGroupClosed = errors.New("group closed")
 
-// Getter 加载键值的回调函数接口
+// Getter
 type Getter interface {
 	Get(ctx context.Context, key string) ([]byte, error)
 }
 
-// GetterFunc 函数类型实现Getter接口
+// GetterFunc Getter
 type GetterFunc func(ctx context.Context, key string) ([]byte, error)
 
-// Get 实现Getter接口
+// Get Getter
 func (f GetterFunc) Get(ctx context.Context, key string) ([]byte, error) { return f(ctx, key) }
 
-// Group 是一个缓存命名空间
+// Group
+// Group is a named cache namespace with optional peer replication.
 type Group struct {
 	name       string
 	getter     Getter
 	mainCache  *Cache
 	peers      PeerPicker
 	loader     *singleflight.Group
-	expiration time.Duration // 缓存过期时间,0表示永不过期
-	closed     int32         // 是否关闭
-	stats      groupStats    // 统计信息
+	expiration time.Duration
+	closed     int32
+	stats      groupStats
 }
 
-// groupStats 保存组的统计信息
+// groupStats
 type groupStats struct {
-	loads        int64 // 加载次数
-	localMisses  int64 //本地缓存未命中次数
-	localHits    int64 // 本地缓存命中次数
-	peerHits     int64 //从对等节点获取的缓存命中次数
-	peerMisses   int64 //从对等节点获取的缓存未命中次数
-	loaderHits   int64 //从加载器获取成功次数
-	loaderErrors int64 //从加载器获取失败次数
-	loadDuration int64 //加载总耗时
+	loads        int64
+	localMisses  int64
+	localHits    int64
+	peerHits     int64
+	peerMisses   int64
+	loaderHits   int64
+	loaderErrors int64
+	loadDuration int64
 }
 
-// GroupOption 缓存组配置项
+// GroupOption
 type GroupOption func(*Group)
 
-// WithExpiration 设置缓存过期时间
+// WithExpiration
 func WithExpiration(expiration time.Duration) GroupOption {
 	return func(g *Group) {
 		g.expiration = expiration
 	}
 }
 
-// WithPeers 设置分布式节点
+// WithPeers
 func WithPeers(peers PeerPicker) GroupOption {
 	return func(g *Group) {
 		g.peers = peers
 	}
 }
 
-// WithCacheOptions 设置缓存选项
+// WithCacheOptions
 func WithCacheOptions(opts CacheOptions) GroupOption {
 	return func(g *Group) {
 		g.mainCache = NewCache(opts)
 	}
 }
 
-// NewGroup 创建一个新的Group实例
+// NewGroup Group
+// NewGroup constructs a group, applies options, and registers it globally.
 func NewGroup(name string, cacheBytes int64, getter Getter, opts ...GroupOption) *Group {
 	if getter == nil {
 		panic("nil Getter")
 	}
-	//创建默认缓存选项
+
 	cacheOpts := DefaultCacheOptions()
 	cacheOpts.MaxBytes = cacheBytes
 	g := &Group{
@@ -99,12 +101,12 @@ func NewGroup(name string, cacheBytes int64, getter Getter, opts ...GroupOption)
 		loader:    &singleflight.Group{},
 	}
 
-	//应用选项
+
 	for _, opt := range opts {
 		opt(g)
 	}
 
-	//注册到全局组映射
+
 	groupsMu.Lock()
 	defer groupsMu.Unlock()
 
@@ -117,16 +119,17 @@ func NewGroup(name string, cacheBytes int64, getter Getter, opts ...GroupOption)
 	return g
 }
 
-// GetGroup 获取指定名称的缓存组
+// GetGroup
 func GetGroup(name string) *Group {
 	groupsMu.RLock()
 	defer groupsMu.RUnlock()
 	return groups[name]
 }
 
-// Get 获取缓存值
+// Get
+// Get reads from local cache first, then falls back to load().
 func (g *Group) Get(ctx context.Context, key string) (ByteView, error) {
-	//检查缓存组是否已关闭
+
 	if atomic.LoadInt32(&g.closed) == 1 {
 		return ByteView{}, ErrGroupClosed
 	}
@@ -135,7 +138,7 @@ func (g *Group) Get(ctx context.Context, key string) (ByteView, error) {
 		return ByteView{}, ErrKeyRequired
 	}
 
-	//从本地缓存中获取
+
 	if v, ok := g.mainCache.Get(ctx, key); ok {
 		atomic.AddInt64(&g.stats.localHits, 1)
 		return v, nil
@@ -144,9 +147,9 @@ func (g *Group) Get(ctx context.Context, key string) (ByteView, error) {
 	return g.load(ctx, key)
 }
 
-// Set 设置缓存值
+// Set
 func (g *Group) Set(ctx context.Context, key string, value []byte) error {
-	//检查缓存组是否已关闭
+
 	if atomic.LoadInt32(&g.closed) == 1 {
 		return ErrGroupClosed
 	}
@@ -158,27 +161,27 @@ func (g *Group) Set(ctx context.Context, key string, value []byte) error {
 		return ErrValueRequired
 	}
 
-	//检查是否是从其他节点同步过来的请求
+
 	isPeerRequest := ctx.Value("from_peer") != nil
 
-	//创建缓存视图
+
 	view := ByteView{b: cloneBytes(value)}
 
-	//设置到本地缓存
+
 	if g.expiration > 0 {
 		g.mainCache.AddWithExpiration(key, view, time.Now().Add(g.expiration))
 	} else {
 		g.mainCache.Add(key, view)
 	}
 
-	//如果不是从其他节点同步过来的请求，且启用了分布式模式，同步到其他节点
+
 	if !isPeerRequest && g.peers != nil {
 		go g.syncToPeers(ctx, "set", key, value)
 	}
 	return nil
 }
 
-// Delete 删除缓存值
+// Delete
 func (g *Group) Delete(ctx context.Context, key string) error {
 	if atomic.LoadInt32(&g.closed) == 1 {
 		return ErrGroupClosed
@@ -187,32 +190,33 @@ func (g *Group) Delete(ctx context.Context, key string) error {
 		return ErrKeyRequired
 	}
 
-	//从本地缓存中删除
+
 	g.mainCache.Delete(key)
 
-	//检查是否是从其他节点同步过来的请求
+
 	isPeerRequest := ctx.Value("from_peer") != nil
 
-	//如果不是从其他节点同步过来的请求，且启用了分布式模式，同步到其他节点
+
 	if !isPeerRequest && g.peers != nil {
 		go g.syncToPeers(ctx, "delete", key, nil)
 	}
 	return nil
 }
 
-// syncToPeers 同步缓存到其他节点
+// syncToPeers
+// syncToPeers sends mutations to the responsible peer (best-effort).
 func (g *Group) syncToPeers(ctx context.Context, op string, key string, value []byte) {
 	if g.peers == nil {
 		return
 	}
 
-	//选择对等节点
+
 	peer, ok, isSelf := g.peers.PickPeer(key)
 	if !ok || isSelf {
 		return
 	}
 
-	//创建同步请求上下文
+
 	syncCtx := context.WithValue(ctx, "from_peer", true)
 
 	var err error
@@ -228,9 +232,9 @@ func (g *Group) syncToPeers(ctx context.Context, op string, key string, value []
 	}
 }
 
-// Clear 清空缓存
+// Clear
 func (g *Group) Clear() {
-	//检查组是否已关闭
+
 	if atomic.LoadInt32(&g.closed) == 1 {
 		return
 	}
@@ -238,20 +242,20 @@ func (g *Group) Clear() {
 	logrus.Infof("cache group %s cleared", g.name)
 }
 
-//Close 关闭组并释放资源
+//Close
 
 func (g *Group) Close() error {
-	//如果组已关闭，则直接返回
+
 	if !atomic.CompareAndSwapInt32(&g.closed, 0, 1) {
 		return nil
 	}
 
-	//关闭本地缓存
+
 	if g.mainCache != nil {
 		g.mainCache.Close()
 	}
 
-	//从全局组映射中删除组
+
 	groupsMu.Lock()
 	defer groupsMu.Unlock()
 	delete(groups, g.name)
@@ -259,13 +263,14 @@ func (g *Group) Close() error {
 	return nil
 }
 
-// load 从加载器获取缓存值
+// load
+// load uses singleflight to collapse concurrent loads of the same key.
 func (g *Group) load(ctx context.Context, key string) (value ByteView, err error) {
-	//使用singleflight.Group进行并发控制
+	//singleflight.Group
 	startTime := time.Now()
 	viewi, err := g.loader.Do(key, func() (interface{}, error) { return g.loadData(ctx, key) })
 
-	//记录缓存加载时间
+
 	loadDuration := time.Since(startTime).Nanoseconds()
 	atomic.AddInt64(&g.stats.loadDuration, loadDuration)
 	atomic.AddInt64(&g.stats.loads, 1)
@@ -276,7 +281,7 @@ func (g *Group) load(ctx context.Context, key string) (value ByteView, err error
 	}
 	view := viewi.(ByteView)
 
-	//设置到本地缓存
+
 	if g.expiration > 0 {
 		g.mainCache.AddWithExpiration(key, view, time.Now().Add(g.expiration))
 	} else {
@@ -285,9 +290,10 @@ func (g *Group) load(ctx context.Context, key string) (value ByteView, err error
 	return view, nil
 }
 
-// loadData 实际加载数据的方法
+// loadData
+// loadData tries peers first, then falls back to the user getter.
 func (g *Group) loadData(ctx context.Context, key string) (interface{}, error) {
-	//尝试从远程节点获取数据
+
 	if g.peers != nil {
 		if peer, ok, isSelf := g.peers.PickPeer(key); ok && !isSelf {
 			value, err := g.getFromPeer(ctx, peer, key)
@@ -300,7 +306,7 @@ func (g *Group) loadData(ctx context.Context, key string) (interface{}, error) {
 		}
 	}
 
-	//从数据源获取数据
+
 	bytes, err := g.getter.Get(ctx, key)
 	if err != nil {
 		return ByteView{}, fmt.Errorf("getter failed: %v", err)
@@ -309,7 +315,7 @@ func (g *Group) loadData(ctx context.Context, key string) (interface{}, error) {
 	return ByteView{b: cloneBytes(bytes)}, nil
 }
 
-// getFromPeer 从指定节点获取数据
+// getFromPeer
 func (g *Group) getFromPeer(ctx context.Context, peer Peer, key string) (ByteView, error) {
 	bytes, err := peer.Get(ctx, g.name, key)
 	if err != nil {
@@ -318,7 +324,7 @@ func (g *Group) getFromPeer(ctx context.Context, peer Peer, key string) (ByteVie
 	return ByteView{b: cloneBytes(bytes)}, nil
 }
 
-// RegisterPeers 注册PeerPicker
+// RegisterPeers PeerPicker
 func (g *Group) RegisterPeers(peers PeerPicker) {
 	if g.peers != nil {
 		panic("RegisterPeers called more than once")
@@ -327,7 +333,8 @@ func (g *Group) RegisterPeers(peers PeerPicker) {
 	logrus.Infof("cache group %s registered peers", g.name)
 }
 
-// Stats 获取缓存组统计信息
+// Stats
+// Stats reports group stats plus underlying cache stats.
 func (g *Group) Stats() map[string]interface{} {
 	stats := map[string]interface{}{
 		"name":          g.name,
@@ -341,7 +348,7 @@ func (g *Group) Stats() map[string]interface{} {
 		"loader_hits":   atomic.LoadInt64(&g.stats.loaderHits),
 		"loader_errors": atomic.LoadInt64(&g.stats.loaderErrors),
 	}
-	//计算各种命中率
+
 	totalGets := atomic.LoadInt64(&g.stats.localHits) + atomic.LoadInt64(&g.stats.localMisses)
 	if totalGets > 0 {
 		stats["local_hit_rate"] = float64(atomic.LoadInt64(&g.stats.localHits)) / float64(totalGets)
@@ -352,7 +359,7 @@ func (g *Group) Stats() map[string]interface{} {
 		stats["loader_hit_rate"] = float64(atomic.LoadInt64(&g.stats.loaderHits)) / float64(totalLoads)
 	}
 
-	//添加缓存大小
+
 	if g.mainCache != nil {
 		cacheStats := g.mainCache.Stats()
 		for k, v := range cacheStats {
@@ -362,7 +369,7 @@ func (g *Group) Stats() map[string]interface{} {
 	return stats
 }
 
-//ListGroups 返回所有缓存组的名称
+//ListGroups
 func ListGroups() []string {
 	groupsMu.RLock()
 	defer groupsMu.RUnlock()
@@ -373,7 +380,7 @@ func ListGroups() []string {
 	return names
 }
 
-//DestroyGroup 销毁指定名称的缓存组
+//DestroyGroup
 func DestroyGroup(name string) bool {
 	groupsMu.Lock()
 	defer groupsMu.Unlock()
@@ -387,7 +394,7 @@ func DestroyGroup(name string) bool {
 	return false
 }
 
-//DestroyAllGroups 销毁所有缓存组
+//DestroyAllGroups
 func DestroyAllGroups() {
 	groupsMu.Lock()
 	defer groupsMu.Unlock()

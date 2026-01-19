@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-// 实现一个简单的 Value 类型用于测试
+//  Value
 type fakeValue struct {
 	data string
 }
@@ -19,7 +19,7 @@ func TestLRUCache_SetAndGet(t *testing.T) {
 		MaxBytes: 100,
 	})
 
-	// 测试设置和获取值
+
 	testKey := "test_key"
 	testValue := fakeValue{data: "test_value"}
 	err := cache.Set(testKey, testValue)
@@ -54,25 +54,25 @@ func TestLRUCache_Delete(t *testing.T) {
 		t.Fatalf("Set failed: %v", err)
 	}
 
-	// 验证值已设置
+
 	_, ok := cache.Get(testKey)
 	if !ok {
 		t.Fatal("Value was not set properly")
 	}
 
-	// 删除键
+
 	result := cache.Delete(testKey)
 	if !result {
 		t.Error("Delete should return true when key exists")
 	}
 
-	// 验证键已被删除
+
 	_, ok = cache.Get(testKey)
 	if ok {
 		t.Error("Value should be deleted after Delete call")
 	}
 
-	// 尝试删除不存在的键
+
 	result = cache.Delete("non_existent_key")
 	if result {
 		t.Error("Delete should return false when key doesn't exist")
@@ -84,12 +84,12 @@ func TestLRUCache_Clear(t *testing.T) {
 		MaxBytes: 100,
 	})
 
-	// 添加一些键值对
+
 	cache.Set("key1", fakeValue{data: "value1"})
 	cache.Set("key2", fakeValue{data: "value2"})
 	cache.Set("key3", fakeValue{data: "value3"})
 
-	// 验证值存在
+
 	_, ok1 := cache.Get("key1")
 	_, ok2 := cache.Get("key2")
 	_, ok3 := cache.Get("key3")
@@ -97,10 +97,10 @@ func TestLRUCache_Clear(t *testing.T) {
 		t.Error("Values were not set properly")
 	}
 
-	// 清空缓存
+
 	cache.Clear()
 
-	// 验证所有值都被清除
+
 	_, ok1 = cache.Get("key1")
 	_, ok2 = cache.Get("key2")
 	_, ok3 = cache.Get("key3")
@@ -110,19 +110,19 @@ func TestLRUCache_Clear(t *testing.T) {
 }
 
 func TestLRUCache_MaxBytesEviction(t *testing.T) {
-	// 使用较小的最大字节数来测试驱逐功能
+
 	cache := newLRUCache(Options{
-		MaxBytes: 20, // 只够存储少量数据
+		MaxBytes: 20,
 	})
 
-	// 添加多个值以超过最大字节数限制
-	// 这会触发驱逐机制
+
+
 	err := cache.Set("key1", fakeValue{data: "very_long_value_that_exceeds_limit"})
 	if err != nil {
 		t.Fatalf("Set failed: %v", err)
 	}
 
-	// 超过容量的条目应被淘汰
+
 	_, ok := cache.Get("key1")
 	if ok {
 		t.Error("Value should be evicted when over capacity")
@@ -137,13 +137,13 @@ func TestLRUCache_Expiration(t *testing.T) {
 	testKey := "exp_test"
 	testValue := fakeValue{data: "exp_value"}
 
-	// 设置带1秒过期时间的值
+
 	err := cache.SetWithExpiration(testKey, testValue, time.Second)
 	if err != nil {
 		t.Fatalf("SetWithExpiration failed: %v", err)
 	}
 
-	// 立即获取，应该能获取到
+
 	value, ok := cache.Get(testKey)
 	if !ok {
 		t.Error("Value should exist immediately after setting")
@@ -153,10 +153,10 @@ func TestLRUCache_Expiration(t *testing.T) {
 		t.Errorf("Expected 'exp_value', got '%s'", fv.data)
 	}
 
-	// 等待过期
+
 	time.Sleep(2 * time.Second)
 
-	// 再次获取，应该已经过期
+
 	_, ok = cache.Get(testKey)
 	if ok {
 		t.Error("Value should be expired and not retrievable")
@@ -180,9 +180,9 @@ func TestLRUCache_SetNilValue(t *testing.T) {
 	})
 
 	testKey := "nil_test"
-	cache.Set(testKey, fakeValue{data: "some_value"}) // 先设置一个值
+	cache.Set(testKey, fakeValue{data: "some_value"})
 
-	// 设置 nil 值应该删除该键
+	//  nil
 	err := cache.Set(testKey, nil)
 	if err != nil {
 		t.Errorf("Setting nil value should not return error: %v", err)

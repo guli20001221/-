@@ -8,12 +8,14 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
+// GRPCPeer wraps a gRPC client to satisfy the Peer interface.
 type GRPCPeer struct {
 	addr   string
 	conn   *grpc.ClientConn
 	client pb.GroupCacheClient
 }
 
+// NewGRPCPeer dials a remote peer and builds a client.
 func NewGRPCPeer(addr string, opts ...grpc.DialOption) (*GRPCPeer, error) {
 	if len(opts) == 0 {
 		opts = []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}

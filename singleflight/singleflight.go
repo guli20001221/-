@@ -2,38 +2,41 @@ package singleflight
 
 import "sync"
 
-//代表正在进行或已完成的请求
 
+
+// call tracks one in-flight execution for a key.
 type call struct {
-	wg  sync.WaitGroup //用来阻塞其他等待者，直到这个fn执行完毕
-	val interface{}    //fn的返回值
-	err error          //fn返回的错误
+	wg  sync.WaitGroup //fn
+	val interface{}    //fn
+	err error          //fn
 }
 
 // Group manages all kinds of  calls
+// Group deduplicates concurrent work by key.
 type Group struct {
-	mu sync.Map //使用sync.Map来优化并发性能 m是sync.Map,key是 string(key),值是*call:key->*call
+	mu sync.Map //sync.Map msync.Map,key string(key),*call:key->*call
 }
 
-// Do针对相同的key，保证多次调用Do(),都只会执行一次fn
+// DokeyDo(),fn
+// Do runs fn once for a key and shares its result with waiters.
 func (g *Group) Do(key string, fn func() (interface{}, error)) (interface{}, error) {
-	//先看有没有正在进行的call
+	//call
 	if v, ok := g.mu.Load(key); ok {
 		c := v.(*call)
-		c.wg.Wait()         //等正在进行的请求执行完毕
-		return c.val, c.err //复用它的结果
+		c.wg.Wait()
+		return c.val, c.err
 	}
 
-	//没有正在进行的call，则创建一个call
+	//callcall
 	c := &call{}
 	c.wg.Add(1)
-	g.mu.Store(key, c) //把这次正在执行中的请求注册到map中
+	g.mu.Store(key, c) //map
 
-	//真正执行用户传进来的fn,并记录结果
+	//fn,
 	c.val, c.err = fn()
 	c.wg.Done()
 
-	//结束后把call从map中删除(避免内存泄漏)
+	//callmap()
 	g.mu.Delete(key)
 
 	return c.val, c.err

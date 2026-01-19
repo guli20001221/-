@@ -92,6 +92,7 @@ func ServeGRPC(ctx context.Context, lis net.Listener, opts GRPCServerOptions) er
 	return server.Serve(lis)
 }
 
+// validateRequest performs basic argument checks and returns group/key.
 func validateRequest(req *pb.Request) (string, string, error) {
 	if req == nil {
 		return "", "", status.Error(codes.InvalidArgument, "request is required")

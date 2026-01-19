@@ -11,6 +11,7 @@ import (
 
 const basePath = "/group_cache"
 
+// Registrar registers services in etcd using a TTL lease.
 type Registrar struct {
 	client *clientv3.Client
 	ttl    time.Duration
@@ -23,6 +24,7 @@ func NewRegistrar(client *clientv3.Client, ttl time.Duration) *Registrar {
 	return &Registrar{client: client, ttl: ttl}
 }
 
+// Register creates a lease-backed key and keeps it alive.
 func (r *Registrar) Register(ctx context.Context, service string, addr string) error {
 	if r.client == nil {
 		return fmt.Errorf("etcd client is nil")
@@ -46,6 +48,7 @@ func (r *Registrar) Register(ctx context.Context, service string, addr string) e
 	return nil
 }
 
+// Deregister removes the service entry from etcd.
 func (r *Registrar) Deregister(ctx context.Context, service string, addr string) error {
 	if r.client == nil {
 		return fmt.Errorf("etcd client is nil")
@@ -54,10 +57,12 @@ func (r *Registrar) Deregister(ctx context.Context, service string, addr string)
 	return err
 }
 
+// serviceKey builds the etcd key used for a service instance.
 func serviceKey(service string, addr string) string {
 	return path.Join(basePath, service, addr)
 }
 
+// ServicePrefix returns the etcd prefix for service discovery.
 func ServicePrefix(service string) string {
 	return path.Join(basePath, service) + "/"
 }

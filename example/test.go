@@ -18,6 +18,7 @@ import (
 )
 
 func main() {
+	// Local cluster helper: run as server or client without etcd.
 	mode := flag.String("mode", "server", "server or client")
 	port := flag.Int("port", 8001, "server listen port")
 	node := flag.String("node", "A", "node name for display")
@@ -53,6 +54,7 @@ func main() {
 }
 
 func runServer(node, addr, peers, groupName string) error {
+	// Server bootstraps peers from a static list and serves gRPC.
 	ctx, stop := signalContext()
 	defer stop()
 
@@ -81,6 +83,7 @@ func runServer(node, addr, peers, groupName string) error {
 }
 
 func runClient(target, group, op, key, value string) error {
+	// Client issues one request against a target node.
 	conn, err := grpc.Dial(target, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return err
@@ -117,6 +120,7 @@ func runClient(target, group, op, key, value string) error {
 }
 
 func parsePeers(self, peers string) []string {
+	// parsePeers normalizes the peer list and ensures self is present.
 	if strings.TrimSpace(peers) == "" {
 		return []string{self}
 	}
@@ -135,6 +139,7 @@ func parsePeers(self, peers string) []string {
 }
 
 func buildPeers(self string, addrs []string) (map[string]Group_Cache.Peer, error) {
+	// buildPeers wires LocalPeer for self and GRPCPeer for others.
 	peers := make(map[string]Group_Cache.Peer, len(addrs))
 	for _, addr := range addrs {
 		if addr == self {
@@ -151,6 +156,7 @@ func buildPeers(self string, addrs []string) (map[string]Group_Cache.Peer, error
 }
 
 func signalContext() (context.Context, func()) {
+	// signalContext cancels on SIGINT/SIGTERM for graceful shutdown.
 	ctx, cancel := context.WithCancel(context.Background())
 	ch := make(chan os.Signal, 1)
 	signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM)

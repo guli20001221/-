@@ -9,13 +9,13 @@ import (
 
 const defaultSvcName = "GroupCache"
 
-//PeerPicker 定义了peer选择器的接口
+//PeerPicker peer
 type PeerPicker interface {
 	PickPeer(key string) (peer Peer, ok bool, self bool)
 	Close() error
 }
 
-//Peer 定义了缓存节点的接口
+//Peer
 type Peer interface {
 	Get(ctx context.Context, group string, key string) ([]byte, error)
 	Set(ctx context.Context, group string, key string, value []byte) error
@@ -23,7 +23,8 @@ type Peer interface {
 	Close() error
 }
 
-//ClientPicker 实现了PeerPicker的接口
+//ClientPicker PeerPicker
+// ClientPicker maintains a consistent-hash ring and peer clients.
 type ClientPicker struct {
 	self  string
 	mu    sync.RWMutex
@@ -131,6 +132,7 @@ func (p *ClientPicker) UpdatePeers(addrs []string, newPeer func(addr string) (Pe
 	}
 }
 
+// PickPeer returns the peer responsible for key, plus whether it's self.
 func (p *ClientPicker) PickPeer(key string) (peer Peer, ok bool, self bool) {
 	if key == "" {
 		return nil, false, false
